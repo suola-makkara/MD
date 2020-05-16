@@ -77,7 +77,7 @@ void Simulation::init(double temp)
 	int dynamicCount = 0;
 	for (Atom& atom : atoms)
 	{
-		if (atom.fixed) continue;
+		if (atom.constraints != Atom::NONE) continue;
 
 		Vec3 vel = Vec3::rand3D() * vAvg;
 		atom.velocity += vel;
@@ -89,7 +89,7 @@ void Simulation::init(double temp)
 	vTot /= (double)dynamicCount;
 	for (Atom& atom : atoms)
 	{
-		if (atom.fixed) continue;
+		if (atom.constraints != Atom::NONE) continue;
 		atom.velocity -= vTot;
 	}
 
@@ -238,7 +238,12 @@ void Simulation::updatePositions1()
 {
 	for (Atom& atom : atoms)
 	{
-		if (!atom.fixed) atom.velocity += 0.5 * timeStep * atom.acceleration;
+		for (int i = 0; i < 3; i++)
+		{
+			if (atom.constraints & (0x1 << i)) continue;
+			atom.velocity[i] += 0.5 * timeStep * atom.acceleration[i];
+		}
+		
 		atom.position += timeStep * atom.velocity;
 	}
 }
@@ -248,7 +253,11 @@ void Simulation::updatePositions2()
 	double v2 = 0;
 	for (Atom& atom : atoms)
 	{
-		if (!atom.fixed) atom.velocity += 0.5 * timeStep * atom.acceleration;
+		for (int i = 0; i < 3; i++)
+		{
+			if (atom.constraints & (0x1 << i)) continue;
+			atom.velocity[i] += 0.5 * timeStep * atom.acceleration[i];
+		}
 		v2 += atom.velocity.norm2();
 	}
 	
@@ -292,27 +301,27 @@ void Simulation::record()
 			if (currentTime == 0) XYZ_FileIO::write(file, atoms);
 			else XYZ_FileIO::append(file, atoms);
 		}
+	}
 
-		if (recordState & DATA)
+	if (recordState & DATA)
+	{
+		std::ofstream dataStream;
+
+		std::string file = dataFile + std::string(".txt");
+		if (currentTime == 0) dataStream.open(file);
+		else dataStream.open(file, std::ofstream::app);
+
+		double totalEnergy = potentialEnergy + kineticEnergy;
+		dataStream << currentTime * timeStep << " " << potentialEnergy << " " << kineticEnergy << " " << totalEnergy;
+
+		for (MeasureData& data : measureData)
 		{
-			std::ofstream dataStream;
-
-			std::string file = dataFile + std::string(".txt");
-			if (currentTime == 0) dataStream.open(file);
-			else dataStream.open(file, std::ofstream::app);
-
-			double totalEnergy = potentialEnergy + kineticEnergy;
-			dataStream << currentTime * timeStep << " " << potentialEnergy << " " << kineticEnergy << " " << totalEnergy;
-
-			for (MeasureData& data : measureData)
-			{
-				dataStream << " " << data.id << " " << data.count << " " << data.force << " " << data.velocity;
-			}
-
-			dataStream << "\n";
-
-			dataStream.close();
+			dataStream << " " << data.id << " " << data.count << " " << data.force << " " << data.velocity;
 		}
+
+		dataStream << "\n";
+
+		dataStream.close();
 	}
 }
 
@@ -321,112 +330,3 @@ const int Simulation::subdivisionTable[14][3] = {
 		{ 1, 1, 0 }, { 0, 1, 1 }, { 1, 0, 1 }, { 1, 1, 1 },
 		{ -1, 1, 1 }, { -1, 1, 0 }, { -1, 1, -1 }, { 1, 1, -1 },
 		{ 0, 1, -1 }, { -1, 0, 1 } };
-
-
-//
-////void Simulation::run(int time)
-////{
-////	/*simulationTime = time;
-////	for (currentTime = 0; currentTime < simulationTime; currentTime++)
-////	{
-////		std::cout << currentTime << '\n';
-////		step();
-////	}*/
-////}
-//
-//void Simulation::step()
-//{
-//	/*potentialEnergy = 0.;
-//	kineticEnergy = 0.;
-//
-//	updatePositions1();
-//
-//	checkBounds();
-//
-//	calculateForces();
-//
-//	updatePositions2();
-//
-//	record();*/
-//}
-//
-//void Simulation::calculateForces()
-//{
-//	/*for (Atom& atom : lattice.atoms) atom.acceleration = Vec3();
-//
-//	for (int i = 0; i < lattice.atoms.size() - 1; i++)
-//		for (int j = i + 1; j < lattice.atoms.size(); j++)
-//		{
-//			Atom& ai = lattice.atoms[i];
-//			Atom& aj = lattice.atoms[j];
-//
-//			const Vec3 rij = ai.position.to(aj.position);
-//
-//			for (int i = 0; i < 3; i++)
-//			{
-//				if ((periodicity >> i) & 0x1)
-//				{
-//					if (rij[i] > 0.5 * lattice.volume[i])
-//						rij[i] -= lattice.volume[i];
-//					if (rij[i] < -0.5 * lattice.volume[i])
-//						rij[i] += lattice.volume[i];
-//				}
-//			}
-//
-//			const double r2 = rij.norm2();
-//			const double ir2 = 1. / r2;
-//			const double ir6 = ir2 * ir2 * ir2;
-//
-//			const Vec3 force = 48 * ir2 * ir6 * (ir6 - 0.5) * rij;
-//
-//			ai.acceleration -= force;
-//			aj.acceleration += force;
-//
-//			potentialEnergy += 4 * ir6 * (ir6 - 1);
-//		}
-//
-//	potentialEnergy /= lattice.atoms.size();*/
-//}
-//
-//void Simulation::checkBounds()
-//{
-//	/*for (Atom& atom : lattice.atoms)
-//	{
-//		for (int i = 0; i < 3; i++)
-//		{
-//			if ((periodicity >> i) & 0x1)
-//			{
-//				if (atom.position[i] - lattice.position[i] > lattice.volume[i])
-//					atom.position[i] -= lattice.volume[i];
-//				if (atom.position[i] - lattice.position[i] < 0)
-//					atom.position[i] += lattice.volume[i];
-//			}
-//		}
-//	}*/
-//}
-//
-//void Simulation::record()
-//{
-//	/*if ((currentTime % recordStep) == 0)
-//	{
-//		std::ofstream dataStream;
-//
-//		if (currentTime == 0)
-//		{
-//			dataStream.open("data.txt");
-//			XYZ_FileIO::write(trajectoryFile, lattice.atoms);
-//		}
-//		else
-//		{
-//			dataStream.open("data.txt", std::ofstream::app);
-//			XYZ_FileIO::append(trajectoryFile, lattice.atoms);
-//		}
-//
-//		// Other data
-//		double totalEnergy = potentialEnergy + kineticEnergy;
-//		
-//		dataStream << (currentTime + 1.) * timeStep << " " << potentialEnergy << " " << kineticEnergy << " " << totalEnergy << '\n';
-//
-//		dataStream.close();
-//	}*/
-//}
